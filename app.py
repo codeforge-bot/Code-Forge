@@ -15,6 +15,7 @@ from collections import defaultdict
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api # You might not need this for basic uploads, but good to have
+import re # <-- ADD THIS IMPORT
 
 # --- PostgreSQL Imports and Configuration ---
 import os
@@ -46,32 +47,28 @@ cloudinary.config(
 )
 
 # Allowed extensions for submissions and images (still good for client-side validation)
-ALLOWED_SUBMISSION_EXTENSIONS = {'pdf', 'ppt', 'pptx', 'doc', 'docx'} # Added doc/docx
-ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'} # Added webp
+ALLOWED_SUBMISSION_EXTENSIONS = {'pdf', 'ppt', 'pptx', 'doc', 'docx'}
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 def allowed_file(filename, allowed_extensions):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
-
 def get_user_by_id(user_id):
     """Fetches user data by user_id from the 'users' table."""
     conn = get_db_connection()
-    if conn is None:
-        return None
-    
+    if conn is None: return None
     cur = conn.cursor(cursor_factory=DictCursor)
     try:
         cur.execute("SELECT user_id, name, college, roll_no, email, address, contact, role, year, branch, department, password FROM users WHERE user_id = %s", (user_id,))
         user_data = cur.fetchone()
-        if user_data:
-            return dict(user_data)
-        return None
+        return dict(user_data) if user_data else None
     except psycopg2.Error as e:
         print(f"Database error in get_user_by_id: {e}")
         return None
     finally:
         if cur: cur.close()
         if conn: conn.close()
+
 
 
 # -------------- Handle Submission ------------
@@ -969,7 +966,6 @@ def view_progress(event_id):
         if conn: conn.close()
     return render_template('view_progress.html', progress=progress, stages=stages, event_id=event_id)
 
-
 @app.route('/brainstorm', methods=['GET', 'POST'])
 def brainstorm():
     if 'user_id' not in session or session['role'] not in ['student', 'mentor']:
@@ -981,7 +977,7 @@ def brainstorm():
         flash("Database connection failed. Please contact support.", "danger")
         return render_template('brainstorm.html', rooms=[])
 
-    cur = conn.cursor(cursor_factory=DictCursor) # Keep DictCursor here
+    cur = conn.cursor(cursor_factory=DictCursor)
     rooms_data = []
 
     try:
@@ -1004,8 +1000,6 @@ def brainstorm():
             flash("Room created! Share the invite link.", "success")
             return redirect(url_for('join_brainstorm_room', room_id=room_id))
 
-        # --- IMPORTANT CHANGE HERE ---
-        # Fetching creator name using LEFT JOIN and COALESCE
         cur.execute('''
             SELECT 
                 br.room_id, 
@@ -1017,7 +1011,7 @@ def brainstorm():
             LEFT JOIN mentors m ON br.created_by = m.user_id
             ORDER BY br.created_at DESC
         ''')
-        rooms_data = [dict(r) for r in cur.fetchall()] # Convert DictRows to dicts for template
+        rooms_data = [dict(r) for r in cur.fetchall()]
     except psycopg2.Error as e:
         conn.rollback()
         flash(f"Database error on brainstorm page: {e}", "danger")
@@ -1029,6 +1023,7 @@ def brainstorm():
     return render_template('brainstorm.html', rooms=rooms_data)
 
 
+
 @app.route('/brainstorm/room/<room_id>')
 def join_brainstorm_room(room_id):
     """Renders the brainstorm room, displaying chat history and shared files."""
@@ -1037,14 +1032,13 @@ def join_brainstorm_room(room_id):
         return redirect(url_for('login'))
 
     user = session.get("user") 
-
     conn = get_db_connection()
     if conn is None:
         return render_template('brainstorm_room.html', room_id=room_id, user=user, shared_files=[], chat_history=[], admin_name="Database Error")
 
     cur = conn.cursor(cursor_factory=DictCursor)
     chat_history = []
-    shared_files_data = [] # New list for persistent shared files
+    shared_files_data = []
     creator_id = None
     admin_name = "Unknown"
 
@@ -1052,8 +1046,8 @@ def join_brainstorm_room(room_id):
         cur.execute("SELECT username, message, timestamp FROM brainstorm_chats WHERE room_id = %s ORDER BY timestamp ASC", (room_id,))
         chat_history = cur.fetchall()
 
-        # Fetch shared files for this room from the database
-        cur.execute("SELECT filename, file_url, uploaded_by_user, uploaded_at FROM brainstorm_room_files WHERE room_id = %s ORDER BY uploaded_at ASC", (room_id,))
+        # MODIFIED: Select the 'id' of the file as well
+        cur.execute("SELECT id, filename, file_url, uploaded_by_user, uploaded_at FROM brainstorm_room_files WHERE room_id = %s ORDER BY uploaded_at ASC", (room_id,))
         shared_files_data = cur.fetchall()
 
         cur.execute("SELECT created_by FROM brainstorm_rooms WHERE room_id = %s", (room_id,))
@@ -1061,15 +1055,17 @@ def join_brainstorm_room(room_id):
         creator_id = creator_result['created_by'] if creator_result else None
 
         if creator_id:
-            cur.execute("SELECT name FROM users WHERE user_id = %s", (creator_id,))
+            # Using a more efficient query to get admin name
+            cur.execute('''
+                SELECT COALESCE(u.name, m.name, 'Unknown') AS name
+                FROM brainstorm_rooms br
+                LEFT JOIN users u ON br.created_by = u.user_id
+                LEFT JOIN mentors m ON br.created_by = m.user_id
+                WHERE br.room_id = %s
+            ''', (room_id,))
             admin_result = cur.fetchone()
             if admin_result:
                 admin_name = admin_result['name']
-            else:
-                cur.execute("SELECT name FROM mentors WHERE user_id = %s", (creator_id,))
-                mentor_admin_result = cur.fetchone()
-                if mentor_admin_result:
-                    admin_name = mentor_admin_result['name']
 
     except psycopg2.Error as e:
         flash(f"Database error in brainstorm room: {e}", "danger")
@@ -1077,14 +1073,18 @@ def join_brainstorm_room(room_id):
     finally:
         if cur: cur.close()
         if conn: conn.close()
-
+    
+    # MODIFIED: Pass current user details for delete permission checks on frontend
     return render_template('brainstorm_room.html',
                            room_id=room_id,
                            user=user,
-                           shared_files=shared_files_data, # Pass persistent shared files
+                           shared_files=shared_files_data,
                            chat_history=chat_history,
                            admin_name=admin_name,
-                           role=session.get('role')) # Pass role for dynamic button logic in template
+                           role=session.get('role'),
+                           current_user_name=session.get('user'),
+                           current_user_id=session.get('user_id'),
+                           room_admin_id=creator_id)
 
 
 @app.route('/student_dashboard')
@@ -1152,39 +1152,39 @@ def upload_file_brainstorm(room):
     if not file or not user_who_uploaded:
         return jsonify(status='error', message="No file or user provided for upload.")
 
-    if not allowed_file(file.filename, ALLOWED_SUBMISSION_EXTENSIONS): # Using submission extensions for brainstorm files
-        return jsonify(status='error', message="Invalid file type. Only PDF, PPT, PPTX, DOC, DOCX allowed for brainstorm files.")
+    if not allowed_file(file.filename, ALLOWED_SUBMISSION_EXTENSIONS):
+        return jsonify(status='error', message="Invalid file type.")
 
     try:
-        # Upload to Cloudinary. resource_type='raw' for non-image files.
         upload_result = cloudinary.uploader.upload(file, resource_type="raw", folder=f"brainstorm_rooms/{room}") 
         file_url = upload_result['secure_url']
-        filename = file.filename # Use original filename for display
+        filename = file.filename
 
         conn = get_db_connection()
         if conn is None:
-            return jsonify(status='error', message="Database connection failed for file persistence.")
+            return jsonify(status='error', message="Database connection failed.")
         cur = conn.cursor()
         try:
-            # Save file metadata to the new brainstorm_room_files table
+            # MODIFIED: Get the new file's ID after inserting
             cur.execute('''
                 INSERT INTO brainstorm_room_files (room_id, filename, file_url, uploaded_by_user, uploaded_at)
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
             ''', (room, filename, file_url, user_who_uploaded, datetime.now()))
+            new_file_id = cur.fetchone()[0] # Fetch the returned ID
             conn.commit()
         except psycopg2.Error as e:
             conn.rollback()
             print(f"DATABASE ERROR SAVING BRAINSTORM FILE METADATA: {e}")
-            return jsonify(status='error', message=f"Failed to save file metadata to DB: {e}")
+            return jsonify(status='error', message=f"Failed to save file metadata: {e}")
         finally:
             if cur: cur.close()
             if conn: conn.close()
 
-        # Return success with necessary data for client-side update
-        return jsonify(status='success', filename=filename, file_url=file_url, user=user_who_uploaded, timestamp=datetime.now().isoformat())
+        # MODIFIED: Return the new file ID in the JSON response
+        return jsonify(status='success', id=new_file_id, filename=filename, file_url=file_url, user=user_who_uploaded, timestamp=datetime.now().isoformat())
     except Exception as e:
         print(f"Cloudinary file upload error: {e}")
-        return jsonify(status='error', message=f"Failed to upload file to Cloudinary: {e}")
+        return jsonify(status='error', message=f"Failed to upload file: {e}")
 
 
 @app.route('/brainstorm/files/<room>')
@@ -1254,7 +1254,7 @@ def handle_join(data):
     user = data.get('user', 'Anonymous')
     if room and user:
         join_room(room)
-        emit('message', {'user': 'System', 'msg': f"{user} joined the room.", 'timestamp': datetime.now().isoformat()}, to=room)
+        emit('message', {'user': 'System', 'msg': f"{user} is Online", 'timestamp': datetime.now().isoformat()}, to=room)
     else:
         print("Invalid data for join event:", data)
 
@@ -1289,20 +1289,73 @@ def handle_message(data):
         if cur: cur.close()
         if conn: conn.close()
 
+# --- NEW ROUTE FOR DELETING FILES ---
+@app.route('/brainstorm/delete_file/<int:file_id>', methods=['POST'])
+def delete_brainstorm_file(file_id):
+    """Handles deletion of a specific file from a brainstorm room."""
+    if 'user_id' not in session:
+        return jsonify(status='error', message='Unauthorized'), 401
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify(status='error', message='Database connection failed'), 500
+
+    cur = conn.cursor(cursor_factory=DictCursor)
+    try:
+        cur.execute('''
+            SELECT 
+                f.room_id,
+                f.file_url,
+                f.uploaded_by_user,
+                r.created_by AS room_creator_id
+            FROM brainstorm_room_files f
+            JOIN brainstorm_rooms r ON f.room_id = r.room_id
+            WHERE f.id = %s
+        ''', (file_id,))
+        file_info = cur.fetchone()
+
+        if not file_info:
+            return jsonify(status='error', message='File not found'), 404
+
+        is_uploader = (file_info['uploaded_by_user'] == session.get('user'))
+        is_room_admin = (file_info['room_creator_id'] == session.get('user_id'))
+
+        if not is_uploader and not is_room_admin:
+            return jsonify(status='error', message='Forbidden'), 403
+            
+        match = re.search(r'/(brainstorm_rooms/.*?)(?:\.\w+)?$', file_info['file_url'])
+        if match:
+            public_id = match.group(1)
+            cloudinary.uploader.destroy(public_id, resource_type="raw")
+        
+        cur.execute("DELETE FROM brainstorm_room_files WHERE id = %s", (file_id,))
+        conn.commit()
+
+        socketio.emit('file_deleted', {'file_id': file_id}, to=file_info['room_id'])
+
+        return jsonify(status='success', message='File deleted')
+
+    except Exception as e:
+        conn.rollback()
+        print(f"FILE DELETE ERROR: {e}")
+        return jsonify(status='error', message=f'An error occurred: {e}'), 500
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
 @socketio.on('share_file')
 def handle_share_file(data):
     """Handles real-time notification of a file being shared in a brainstorm room."""
     room = data.get('room')
-    user = data.get('user')
-    filename = data.get('filename')
-    file_url = data.get('file_url')
-    timestamp = data.get('timestamp')
-
-    if not all([room, user, filename, file_url, timestamp]):
-        print("Invalid file share data:", data)
-        return
+    if not room: return
     
-    emit('file_shared', {'user': user, 'filename': filename, 'file_url': file_url, 'timestamp': timestamp}, to=room)
+    emit('file_shared', {
+        'id': data.get('id'),
+        'user': data.get('user'),
+        'filename': data.get('filename'),
+        'file_url': data.get('file_url'),
+        'timestamp': data.get('timestamp')
+    }, to=room)
 
 
 @app.route('/profile', methods=['GET', 'POST'])
