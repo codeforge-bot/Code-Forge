@@ -1254,7 +1254,7 @@ def handle_join(data):
     user = data.get('user', 'Anonymous')
     if room and user:
         join_room(room)
-        emit('message', {'user': 'System', 'msg': f"{user} is Online", 'timestamp': datetime.now().isoformat()}, to=room)
+        emit('message', {'user': 'System', 'msg': f"{user} joined the room.", 'timestamp': datetime.now().isoformat()}, to=room)
     else:
         print("Invalid data for join event:", data)
 
