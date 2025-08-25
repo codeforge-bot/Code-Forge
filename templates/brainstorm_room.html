@@ -11,17 +11,27 @@
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <meta name="msapplication-TileColor" content="#050816">
     <meta name="theme-color" content="#050816">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- AOS (Animate On Scroll) Library -->
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #050816;
+            background-color: #050816; /* A richer, deep navy-blue */
             color: #E5E7EB;
+            /* Subtle moving gradient background */
             background-image: radial-gradient(at 27% 37%, hsla(215, 98%, 61%, 0.1) 0px, transparent 50%),
                               radial-gradient(at 97% 21%, hsla(187, 98%, 61%, 0.1) 0px, transparent 50%),
                               radial-gradient(at 52% 99%, hsla(355, 98%, 61%, 0.1) 0px, transparent 50%),
@@ -30,21 +40,36 @@
                               radial-gradient(at 33% 50%, hsla(222, 67%, 73%, 0.1) 0px, transparent 50%),
                               radial-gradient(at 79% 53%, hsla(343, 68%, 63%, 0.1) 0px, transparent 50%);
         }
+        
+        /* Glassmorphism effect for cards */
         .glass-card {
             background: rgba(17, 25, 40, 0.75);
             backdrop-filter: blur(16px) saturate(180%);
             -webkit-backdrop-filter: blur(16px) saturate(180%);
             border: 1px solid rgba(255, 255, 255, 0.125);
         }
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6B7280; }
+
+        /* Custom scrollbar for chat and file list */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4B5563;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6B7280;
+        }
     </style>
 </head>
 <body class="flex flex-col min-h-screen">
     
+    <!-- Flex-grow container to push footer down -->
     <main class="flex-grow flex flex-col">
+        <!-- Room Header -->
         <div class="bg-slate-900/80">
             <div class="max-w-[85rem] mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -65,13 +90,16 @@
             </div>
         </div>
 
+        <!-- Chat and Files Section -->
         <div class="flex-grow max-w-[85rem] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <div class="grid lg:grid-cols-3 gap-8 h-full">
+                <!-- Chat Panel -->
                 <div class="lg:col-span-2 glass-card rounded-2xl flex flex-col p-6" data-aos="fade-up">
                     <h3 class="text-xl font-bold text-white mb-4 flex-shrink-0">
                         <i class="fas fa-comments text-cyan-400 mr-2"></i> Live Chat
                     </h3>
                     <div id="chat" class="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4 min-h-[400px]">
+                        <!-- Chat messages will be dynamically inserted here -->
                         {% for chat_message in chat_history %}
                         <div class="flex gap-x-2">
                             <div class="grow">
@@ -96,33 +124,16 @@
                     {% endif %}
                 </div>
 
+                <!-- Shared Files Panel -->
                 <div class="lg:col-span-1 glass-card rounded-2xl flex flex-col p-6" data-aos="fade-up" data-aos-delay="100">
                     <h3 class="text-xl font-bold text-white mb-4 flex-shrink-0">
                         <i class="fas fa-folder-open text-red-400 mr-2"></i> Shared Files
                     </h3>
                     <div id="sharedFilesContainer" class="flex-grow overflow-y-auto pr-2 custom-scrollbar min-h-[250px]">
                         <ul id="sharedFiles" class="space-y-3">
-                            {% for file in shared_files %}
-                                <li id="file-{{ file.id }}">
-                                    <div class="flex items-center gap-x-3 p-3 rounded-lg bg-slate-900/50 hover:bg-slate-800 transition-colors">
-                                        <a href="{{ file.file_url }}" target="_blank" class="flex items-center gap-x-3 flex-1">
-                                            <i class="fa-solid fa-file-lines text-xl text-red-400"></i>
-                                            <div class="flex-1">
-                                                <p class="text-sm font-semibold text-white truncate">{{ file.filename }}</p>
-                                                <p class="text-xs text-gray-400">by {{ file.uploaded_by_user }} on {{ file.uploaded_at.strftime('%b %d') }}</p>
-                                            </div>
-                                            <i class="fa-solid fa-download text-gray-500"></i>
-                                        </a>
-                                        {% if file.uploaded_by_user == current_user_name or current_user_id == room_admin_id %}
-                                            <button onclick="deleteFile({{ file.id }})" class="text-gray-500 hover:text-red-400 transition-colors p-2 rounded-full -mr-2">
-                                                <i class="fa-solid fa-trash-can"></i>
-                                            </button>
-                                        {% endif %}
-                                    </div>
-                                </li>
-                            {% endfor %}
+                            <!-- Shared files will be dynamically inserted here -->
                         </ul>
-                        <p id="no-files-message" class="text-gray-500 text-center mt-4 {% if shared_files %}hidden{% endif %}">No files shared yet.</p>
+                        <p id="no-files-message" class="text-gray-500 text-center mt-4 hidden">No files shared yet.</p>
                     </div>
                     {% if session['role'] != 'mentor' %}
                     <div class="mt-4 pt-4 border-t border-gray-700 flex-shrink-0">
@@ -141,16 +152,16 @@
         </div>
     </main>
     
+    <!-- Socket.IO and custom scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         const socket = io();
         
-        const room = "{{ room_id }}";
+        // FIX: Get room ID from the URL path instead of Jinja variable
+        const pathParts = window.location.pathname.split('/');
+        const room = pathParts.pop() || pathParts.pop(); // Handles optional trailing slash
+        
         const user = "{{ user }}";
-        // MODIFIED: Added global vars for permission checking
-        const currentUserName = "{{ current_user_name }}";
-        const roomAdminId = "{{ room_admin_id }}";
-        const currentUserId = "{{ current_user_id }}";
 
         const chatMessagesDiv = document.getElementById("chat");
         const sharedFilesList = document.getElementById("sharedFiles");
@@ -160,34 +171,21 @@
             element.scrollTop = element.scrollHeight;
         }
 
-        // MODIFIED: Entire function replaced to support delete buttons
-        function addSharedFileToList(fileId, username, filename, fileUrl, timestamp) {
-            noFilesMessage.classList.add('hidden');
-            const li = document.createElement("li");
-            li.id = `file-${fileId}`;
-            const time = new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
-            
-            let deleteButtonHtml = '';
-            if (username === currentUserName || currentUserId === roomAdminId) {
-                deleteButtonHtml = `
-                    <button onclick="deleteFile(${fileId})" class="text-gray-500 hover:text-red-400 transition-colors p-2 rounded-full -mr-2">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </button>`;
+        async function loadInitialFiles() {
+            try {
+                const response = await fetch(`/brainstorm/files/${room}`);
+                const files = await response.json();
+                sharedFilesList.innerHTML = ''; // Clear list before loading
+                if (files.length > 0) {
+                    noFilesMessage.classList.add('hidden');
+                    files.forEach(file => addSharedFileToList(file.uploaded_by_user, file.filename, file.file_url, file.uploaded_at));
+                } else {
+                    noFilesMessage.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error fetching shared files:', error);
+                noFilesMessage.classList.remove('hidden');
             }
-
-            li.innerHTML = `
-                <div class="flex items-center gap-x-3 p-3 rounded-lg bg-slate-900/50 hover:bg-slate-800 transition-colors">
-                    <a href="${fileUrl}" target="_blank" class="flex items-center gap-x-3 flex-1">
-                        <i class="fa-solid fa-file-lines text-xl text-red-400"></i>
-                        <div class="flex-1">
-                            <p class="text-sm font-semibold text-white truncate">${filename}</p>
-                            <p class="text-xs text-gray-400">by ${username} on ${time}</p>
-                        </div>
-                        <i class="fa-solid fa-download text-gray-500"></i>
-                    </a>
-                    ${deleteButtonHtml}
-                </div>`;
-            sharedFilesList.appendChild(li);
         }
 
         function addChatMessage(username, message, timestamp) {
@@ -206,6 +204,21 @@
             scrollToBottom(chatMessagesDiv);
         }
 
+        function addSharedFileToList(username, filename, fileUrl, timestamp) {
+            const li = document.createElement("li");
+            const time = new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
+            li.innerHTML = `
+                <a href="${fileUrl}" target="_blank" class="flex items-center gap-x-3 p-3 rounded-lg bg-slate-900/50 hover:bg-slate-800 transition-colors">
+                    <i class="fa-solid fa-file-lines text-xl text-red-400"></i>
+                    <div class="flex-1">
+                        <p class="text-sm font-semibold text-white truncate">${filename}</p>
+                        <p class="text-xs text-gray-400">by ${username} on ${time}</p>
+                    </div>
+                    <i class="fa-solid fa-download text-gray-500"></i>
+                </a>`;
+            sharedFilesList.appendChild(li);
+        }
+
         socket.on("connect", () => {
             socket.emit("join", { room: room, user: user });
         });
@@ -216,19 +229,8 @@
 
         socket.on("file_shared", (data) => {
             addChatMessage(data.user, `📎 Shared a file: <a href="${data.file_url}" target="_blank" class="text-cyan-400 underline">${data.filename}</a>`, data.timestamp);
-            // MODIFIED: Pass file ID to the function
-            addSharedFileToList(data.id, data.user, data.filename, data.file_url, data.timestamp);
-        });
-        
-        // NEW: Listener for real-time file deletion
-        socket.on('file_deleted', (data) => {
-            const fileElement = document.getElementById(`file-${data.file_id}`);
-            if (fileElement) {
-                fileElement.remove();
-            }
-            if (sharedFilesList.children.length === 0) {
-                noFilesMessage.classList.remove('hidden');
-            }
+            addSharedFileToList(data.user, data.filename, data.file_url, data.timestamp);
+            noFilesMessage.classList.add('hidden');
         });
 
         const messageInput = document.getElementById("message");
@@ -244,7 +246,9 @@
         
         if (sendMessageBtn && messageInput) {
             sendMessageBtn.addEventListener('click', sendMessage);
-            messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
         }
 
         const uploadForm = document.getElementById('uploadForm');
@@ -255,7 +259,7 @@
             fileInput.addEventListener('change', () => {
                 if (fileInput.files.length > 0) {
                     fileNameDisplay.textContent = `Selected: ${fileInput.files[0].name}`;
-                    uploadFile();
+                    uploadFile(); // Automatically upload on file selection
                 } else {
                     fileNameDisplay.textContent = '';
                 }
@@ -268,16 +272,15 @@
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('user', user);
+
                 fileNameDisplay.textContent = 'Uploading...';
 
                 try {
                     const response = await fetch(`/brainstorm/upload/${room}`, { method: 'POST', body: formData });
                     const data = await response.json();
                     if (data.status === 'success') {
-                        // MODIFIED: Send the new file ID in the socket event
                         socket.emit('share_file', {
                             room: room,
-                            id: data.id,
                             user: data.user,
                             filename: data.filename,
                             file_url: data.file_url,
@@ -295,34 +298,20 @@
                 }
             }
         }
-        
-        // NEW: Function to handle the delete request
-        async function deleteFile(fileId) {
-            if (!confirm('Are you sure you want to permanently delete this file?')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/brainstorm/delete_file/${fileId}`, {
-                    method: 'POST',
-                });
-                const data = await response.json();
-                if (data.status !== 'success') {
-                    alert('Deletion failed: ' + data.message);
-                }
-            } catch (error) {
-                console.error('Error deleting file:', error);
-                alert('An error occurred while trying to delete the file.');
-            }
-        }
 
         document.addEventListener('DOMContentLoaded', () => {
+            loadInitialFiles();
             scrollToBottom(chatMessagesDiv);
         });
     </script>
     
+    <!-- AOS (Animate On Scroll) JS -->
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     <script>
-      AOS.init({ duration: 800, once: true });
+      AOS.init({
+        duration: 800,
+        once: true,
+      });
     </script>
 </body>
 </html>
