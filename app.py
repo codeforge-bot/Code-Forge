@@ -26,6 +26,11 @@ import smtplib
 from email.message import EmailMessage
 from smtplib import SMTPAuthenticationError, SMTPConnectError
 
+import requests
+from google_auth_oauthlib.flow import Flow
+import google.auth.transport.requests
+from pip._vendor import cachecontrol
+
 # ==============================================================================
 # FLASK APP & EXTENSION INITIALIZATION
 # ==============================================================================
@@ -36,6 +41,22 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_strong_default_secret_key
 
 # Configure SocketIO for real-time communication, allowing all origins for deployment flexibility
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+
+# ==============================================================================
+# GOOGLE OAUTH CONFIGURATION
+# ==============================================================================
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1" # ONLY for local testing. Remove in production if not needed.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+
+# The path to the client secrets file downloaded from Google Cloud Console
+client_secrets_file = os.path.join(os.path.dirname(__file__), "client_secret.json")
+
+flow = Flow.from_client_secrets_file(
+    client_secrets_file=client_secrets_file,
+    scopes=["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email", "openid"],
+    redirect_uri="https://code-forge-65k2.onrender.com/callback"
+)
 
 # ==============================================================================
 # CONFIGURATION FROM ENVIRONMENT VARIABLES
@@ -230,6 +251,87 @@ def login():
             if conn: conn.close()
 
     return render_template('login.html')
+
+@app.route("/login/google")
+def login_google():
+    """Redirects to Google's authorization page."""
+    authorization_url, state = flow.authorization_url()
+    session["state"] = state
+    return redirect(authorization_url)
+
+
+@app.route("/callback")
+def callback():
+    """Handles the callback from Google after authentication."""
+    flow.fetch_token(authorization_response=request.url)
+
+    credentials = flow.credentials
+    request_session = requests.session()
+    cached_session = cachecontrol.CacheControl(request_session)
+    token_request = google.auth.transport.requests.Request(session=cached_session)
+
+    # Fetch user profile information from Google
+    user_info_response = requests.get(
+        "https://www.googleapis.com/oauth2/v1/userinfo",
+        headers={"Authorization": f"Bearer {credentials.token}"},
+    ).json()
+
+    user_email = user_info_response.get("email")
+    user_name = user_info_response.get("name")
+
+    if not user_email:
+        flash("Could not retrieve email from Google. Please try again.", "danger")
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    if not conn:
+        return redirect(url_for('login'))
+
+    try:
+        with conn.cursor() as cur:
+            # Check if the user already exists in the database
+            cur.execute("SELECT * FROM users WHERE email = %s", (user_email,))
+            user = cur.fetchone()
+
+            if user:
+                # User exists, log them in
+                session['user_id'] = user['user_id']
+                session['user'] = user['name']
+                session['role'] = user['role']
+            else:
+                # User does not exist, create a new account (sign-up)
+                user_id = str(uuid.uuid4())[:8]
+                # Generate a dummy password as it's required by the schema but won't be used
+                hashed_password = generate_password_hash(str(uuid.uuid4()))
+
+                cur.execute("""
+                    INSERT INTO users (user_id, name, email, password, role)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (user_id, user_name, user_email, hashed_password, 'student')) # Default role is 'student'
+                conn.commit()
+
+                # Log the new user in
+                session['user_id'] = user_id
+                session['user'] = user_name
+                session['role'] = 'student'
+
+        flash(f"Welcome, {session['user']}!", "success")
+        return redirect(url_for('dashboard'))
+
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"GOOGLE SIGN-IN DB ERROR: {e}")
+        flash("A database error occurred during sign-in.", "danger")
+        return redirect(url_for('login'))
+    finally:
+        if conn: conn.close()
+
+
+@app.route("/protected_area")
+def protected_area():
+    if "google_id" not in session:
+        return redirect(url_for("login"))
+    return "You are in the protected area!"
 
 @app.route('/logout')
 def logout():
