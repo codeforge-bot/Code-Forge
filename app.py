@@ -50,10 +50,19 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
 # The path to the client secrets file downloaded from Google Cloud Console
-client_secrets_file = os.path.join(os.path.dirname(__file__), "client_secret.json")
+client_config = {
+    "web": {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": ["https://code-forge-65k2.onrender.com/callback"],
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+    }
+}
 
-flow = Flow.from_client_secrets_file(
-    client_secrets_file=client_secrets_file,
+flow = Flow.from_client_config(
+    client_config=client_config,
     scopes=["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email", "openid"],
     redirect_uri="https://code-forge-65k2.onrender.com/callback"
 )
