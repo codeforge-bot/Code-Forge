@@ -56,7 +56,7 @@ client_config = {
         "client_secret": GOOGLE_CLIENT_SECRET,
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["https://code-forge-65k2.onrender.com/callback"],
+        "redirect_uris": ["https://codeforge-u1ak.onrender.com/callback"],
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
     }
 }
@@ -64,7 +64,7 @@ client_config = {
 flow = Flow.from_client_config(
     client_config=client_config,
     scopes=["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email", "openid"],
-    redirect_uri="https://code-forge-65k2.onrender.com/callback"
+    redirect_uri="https://codeforge-u1ak.onrender.com/callback"
 )
 
 # ==============================================================================
