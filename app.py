@@ -1,7 +1,8 @@
 # --- Core Imports ---
 import os
 import uuid
-import random 
+import random
+import re
 from datetime import datetime
 from collections import defaultdict
 
@@ -56,7 +57,7 @@ client_config = {
         "client_secret": GOOGLE_CLIENT_SECRET,
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["https://codeforge-u1ak.onrender.com/callback"],
+        "redirect_uris": ["https://code-forge-9aq0.onrender.com/callback"],
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
     }
 }
@@ -64,7 +65,7 @@ client_config = {
 flow = Flow.from_client_config(
     client_config=client_config,
     scopes=["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email", "openid"],
-    redirect_uri="https://codeforge-u1ak.onrender.com/callback"
+    redirect_uri="https://code-forge-9aq0.onrender.com/callback"
 )
 
 # ==============================================================================
@@ -75,8 +76,6 @@ flow = Flow.from_client_config(
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     print("FATAL ERROR: DATABASE_URL environment variable is not set.")
-    # In a real app, you might exit or handle this more gracefully
-    # For this example, we'll let it fail on the first DB call.
 
 # --- Cloudinary Configuration ---
 try:
@@ -233,8 +232,12 @@ def home():
 def login():
     """Handles user login for all roles from a single, unified 'users' table."""
     if request.method == 'POST':
-        user_id = request.form.get('user_id')
-        password = request.form.get('password')
+        user_id_attempt = request.form.get('user_id')
+        password_attempt = request.form.get('password')
+        
+        print("\n" + "="*40)
+        print(f"LOGIN ATTEMPT: User ID '{user_id_attempt}'")
+        print("="*40)
 
         conn = get_db_connection()
         if not conn: return render_template('login.html')
@@ -242,17 +245,26 @@ def login():
         try:
             with conn.cursor() as cur:
                 # A single query to the unified users table
-                cur.execute("SELECT user_id, name, role, password FROM users WHERE user_id = %s", (user_id,))
+                print("Checking users table for all roles...")
+                cur.execute("SELECT user_id, name, role, password FROM users WHERE user_id = %s", (user_id_attempt,))
                 user = cur.fetchone()
 
-                if user and check_password_hash(user['password'], password):
-                    session['user_id'] = user['user_id']
-                    session['user'] = user['name']
-                    session['role'] = user['role']
-                    flash(f"Welcome back, {user['name']}!", "success")
-                    return redirect(url_for('dashboard'))
+                if user:
+                    print(f"Found potential user: {user['user_id']} ({user['name']}) with role: {user['role']}")
+                    if check_password_hash(user['password'], password_attempt):
+                        print("✅ Password MATCHED.")
+                        session['user_id'] = user['user_id']
+                        session['user'] = user['name']
+                        session['role'] = user['role']
+                        flash(f"Welcome back, {user['name']}!", "success")
+                        return redirect(url_for('dashboard'))
+                    else:
+                        print("❌ Password FAILED.")
                 else:
-                    flash("Invalid User ID or Password.", "danger")
+                    print("User ID not found in the database.")
+                
+                print("No user found or password incorrect for all checks.")
+                flash("Invalid User ID or Password.", "danger")
         except psycopg2.Error as e:
             print(f"LOGIN ERROR: {e}")
             flash("A database error occurred during login.", "danger")
@@ -421,11 +433,17 @@ def register_details():
         return redirect(url_for('register_student'))
 
     if request.method == 'POST':
-        if request.form['password'] != request.form['confirm_password']:
+        password = request.form['password']
+        if password != request.form['confirm_password']:
             flash("Passwords do not match!", "danger")
             return render_template('register_details.html')
+            
+        # --- SERVER-SIDE PASSWORD VALIDATION ---
+        if len(password) < 8 or not re.search("[a-z]", password) or not re.search("[A-Z]", password) or not re.search("[0-9]", password) or not re.search("[!@#$%^&*]", password):
+            flash("Password does not meet the requirements.", "danger")
+            return render_template('register_details.html')
 
-        hashed_password = generate_password_hash(request.form['password'])
+        hashed_password = generate_password_hash(password)
         user_id = str(uuid.uuid4())[:8] # Generate a unique user ID
 
         conn = get_db_connection()
@@ -468,13 +486,18 @@ def register_details():
 @app.route('/register_mentor', methods=['GET', 'POST'])
 def register_mentor():
     """Handles mentor registration."""
-    # This could be expanded to have an approval flow by an admin
     if request.method == 'POST':
-        if request.form['password'] != request.form['confirm_password']:
+        password = request.form['password']
+        if password != request.form['confirm_password']:
             flash("Passwords do not match!", "danger")
             return render_template('register_mentor.html')
 
-        hashed_password = generate_password_hash(request.form['password'])
+        # --- SERVER-SIDE PASSWORD VALIDATION ---
+        if len(password) < 8 or not re.search("[a-z]", password) or not re.search("[A-Z]", password) or not re.search("[0-9]", password) or not re.search("[!@#$%^&*]", password):
+            flash("Password does not meet the requirements.", "danger")
+            return render_template('register_mentor.html')
+
+        hashed_password = generate_password_hash(password)
         user_id = str(uuid.uuid4())[:8]
 
         conn = get_db_connection()
@@ -914,6 +937,11 @@ def change_password():
     if new_password != request.form.get('confirm_new_password'):
         flash("New passwords do not match.", "danger")
         return redirect(url_for('profile'))
+        
+    # --- SERVER-SIDE PASSWORD VALIDATION ---
+    if len(new_password) < 8 or not re.search("[a-z]", new_password) or not re.search("[A-Z]", new_password) or not re.search("[0-9]", new_password) or not re.search("[!@#$%^&*]", new_password):
+        flash("New password does not meet the security requirements.", "danger")
+        return redirect(url_for('profile'))
 
     hashed_password = generate_password_hash(new_password)
     conn = get_db_connection()
@@ -1105,7 +1133,7 @@ def upload_file_brainstorm(room_id):
         print(f"BRAINSTORM UPLOAD ERROR: {e}")
         return jsonify(status='error', message='File upload failed.'), 500
     finally:
-        if conn: conn.close()
+        if 'conn' in locals() and conn: conn.close()
 
 @socketio.on('join')
 def handle_join(data):
@@ -1147,4 +1175,5 @@ if __name__ == '__main__':
     # Use socketio.run() to correctly start the eventlet server
     # The host and port are important for running inside containers or on cloud platforms
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+
